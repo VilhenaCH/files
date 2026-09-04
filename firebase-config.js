@@ -1,20 +1,17 @@
-// ============================================================
-// CONFIGURAÇÃO DO FIREBASE
-// ============================================================
-// 1. Crie um projeto gratuito em https://console.firebase.google.com
-// 2. Dentro do projeto, adicione um "Web App" (ícone </>)
-// 3. Copie o objeto de configuração que o Firebase te der e cole
-//    substituindo o objeto abaixo.
-// 4. Ative o Firestore Database (modo produção) em:
-//    Build > Firestore Database > Criar banco de dados
-// 5. Em Firestore > Regras, cole as regras sugeridas no README.md
-// ============================================================
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
-export const firebaseConfig = {
-  apiKey: "COLE_AQUI",
-  authDomain: "SEU-PROJETO.firebaseapp.com",
-  projectId: "SEU-PROJETO",
-  storageBucket: "SEU-PROJETO.appspot.com",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI"
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBrRStfBY7GdXXx46CgY2BAFvWE56_Ixfc",
+  authDomain: "files-f4650.firebaseapp.com",
+  projectId: "files-f4650",
+  storageBucket: "files-f4650.firebasestorage.app",
+  messagingSenderId: "1018254178001",
+  appId: "1:1018254178001:web:64207f77202b5264d3f7f0"
 };
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
