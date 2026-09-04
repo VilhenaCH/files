@@ -66,11 +66,49 @@ html, body {
 #board-title:hover, #board-title:focus { background: var(--bg-panel-2); }
 
 #topbar-right { display: flex; align-items: center; gap: 12px; }
-#player-badge {
-  font-size: 12px;
+
+#player-menu-wrap { position: relative; }
+#player-menu-btn {
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-dim);
+  font-size: 12px;
   font-family: "JetBrains Mono", monospace;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
 }
+#player-menu-btn:hover { background: var(--bg-panel-2); border-color: var(--border); color: var(--text); }
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 170px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  z-index: 60;
+  box-shadow: 0 6px 18px rgba(0,0,0,.4);
+}
+.dropdown-menu.open { display: block; }
+.dropdown-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.dropdown-menu button:hover { background: var(--bg-panel); }
+#switch-vault-btn { color: var(--danger); }
+
 #share-btn {
   background: var(--accent-dim);
   color: #ece9ff;
@@ -505,7 +543,7 @@ html, body {
   #topbar { padding: 0 10px; }
   #board-title { font-size: 13px; max-width: 34vw; }
   #share-btn { padding: 6px 9px; font-size: 11px; }
-  #player-badge { display: none; }
+  #player-menu-btn { font-size: 11px; padding: 5px 6px; }
   #hint { max-width: 88vw; white-space: normal; text-align: center; font-size: 11px; }
   #zoom-controls { bottom: 12px; right: 12px; }
   #fab-add { bottom: 12px; left: 12px; width: 50px; height: 50px; font-size: 24px; }
