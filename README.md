@@ -1,14 +1,21 @@
 # Quadro de Investigação — Canvas colaborativo estilo Obsidian
 
 Quadro livre em tempo real para a mesa: cards de texto, imagens coladas
-direto do clipboard, setas de conexão entre cards, pan/zoom infinito —
-tudo com o visual do Canvas do Obsidian.
+direto do clipboard, setas de conexão entre cards, pan/zoom infinito
+(com suporte a toque/celular) — tudo com o visual do Canvas do Obsidian,
+organizado em **cofres** protegidos por senha.
 
 ## Como funciona
 
 - **Frontend**: HTML/CSS/JS puro, sem build step. Cada card é um `<div>`
   posicionado livremente dentro de um plano com pan/zoom (igual ao
   Obsidian). As setas são desenhadas em SVG por cima.
+- **Cofres**: ao abrir o site sem um link direto, a pessoa cai numa
+  lista de cofres já criados. Pode entrar em um (com a senha definida
+  por quem criou) ou criar um novo cofre com nome e senha próprios.
+  Cada cofre é um quadro isolado — cards e conexões nunca se misturam
+  entre cofres diferentes. Depois de digitar a senha certa uma vez, o
+  navegador lembra e não pede de novo nesse aparelho.
 - **Tempo real**: Firebase Firestore. Cada card e cada seta é um
   documento separado, então quando alguém move um card ou escreve algo,
   só aquele documento é sincronizado — todo mundo com o link aberto vê
@@ -19,8 +26,21 @@ tudo com o visual do Canvas do Obsidian.
   tudo no plano gratuito do Firebase. Funciona bem para prints,
   fotos de referência e artes — não é indicado para fotos gigantes em
   altíssima resolução.
-- **Acesso**: sem login. Cada jogador abre o link do quadro, digita um
-  nome (fica salvo no navegador dele) e já pode editar.
+- **Acesso**: sem login de conta. Cada jogador entra no cofre com a
+  senha da mesa, digita um nome (fica salvo no navegador dele) e já
+  pode editar.
+- **Celular/tablet**: o quadro usa gestos de toque próprios — arrastar
+  com um dedo move o quadro, pinçar com dois dedos dá zoom, e os
+  controles dos cards (mover, redimensionar, conectar) ficam sempre
+  visíveis em telas sem mouse, com alvos maiores pro dedo.
+
+> **Sobre a segurança da senha**: a senha do cofre é comparada dentro
+> do navegador (hash SHA-256), sem servidor próprio por trás. Isso é
+> suficiente pra impedir que curiosos batam na lista de cofres e
+> entrem sem saber a senha — mas não é um cofre de banco: alguém com
+> conhecimento técnico e acesso direto ao projeto Firebase poderia, em
+> tese, contornar isso. Para uma mesa de RPG entre amigos, é uma
+> proteção mais que suficiente.
 
 ## 1. Criar o projeto Firebase (grátis)
 
@@ -39,6 +59,9 @@ tudo com o visual do Canvas do Obsidian.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    match /vaults/{vaultId} {
+      allow read, write: if true;
+    }
     match /boards/{boardId} {
       allow read, write: if true;
       match /nodes/{nodeId} {
@@ -51,6 +74,11 @@ service cloud.firestore {
   }
 }
 ```
+
+> Se você já tinha publicado as regras antigas (sem o bloco `vaults`),
+> precisa voltar em **Firestore Database > Regras** e colar essa
+> versão atualizada — senão a lista de cofres e a criação de novos
+> cofres não vão funcionar.
 
 > Isso deixa o quadro aberto para qualquer pessoa com o link — igual a
 > um Google Doc "qualquer um com o link pode editar". Como o board id
@@ -69,14 +97,18 @@ service cloud.firestore {
 
 ## 3. Usar com a mesa
 
-- Abra o link publicado — isso cria um quadro novo automaticamente
-  (o endereço ganha um `?board=xxxxxx`).
+- Abra o link publicado — você cai na tela de cofres.
+- Clique em **+ Criar novo cofre**, dê um nome (ex: "Caso do Farol") e
+  uma senha, e confirme. Isso já te leva direto pro quadro.
 - Clique em **Copiar link** na barra superior e mande esse link
-  completo (com o `?board=...`) para os jogadores — é ele que garante
-  que todo mundo caia no mesmo quadro.
-- Quer quadros separados por sessão/arco da campanha? Basta trocar o
-  valor depois de `?board=` na URL (ex. `?board=caso-do-farol`) e
-  compartilhar o novo link — cada valor diferente é um quadro isolado.
+  completo (com o `?board=...`) para os jogadores, junto com a senha
+  que você escolheu — eles abrem o link, digitam a senha uma vez, o
+  nome deles, e já entram no mesmo quadro.
+- Se os jogadores abrirem o site sem o link direto, eles também
+  conseguem achar o cofre pelo nome na lista da tela inicial — só
+  precisam saber a senha.
+- Quer um quadro separado por sessão/arco da campanha? É só criar um
+  novo cofre — cada um tem seu próprio conjunto de cards e conexões.
 
 ## Controles
 
