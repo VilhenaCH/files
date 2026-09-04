@@ -52,14 +52,42 @@
   <!-- Botão flutuante de novo card -->
   <button id="fab-add" title="Adicionar card">+</button>
 
-  <!-- Overlay de nome de jogador -->
-  <div id="name-overlay">
-    <div id="name-card">
+  <!-- Overlay de autenticação: lobby de cofres / criar / desbloquear / nome -->
+  <div id="auth-overlay">
+
+    <div id="panel-lobby" class="auth-panel">
+      <h1>Cofres de investigação</h1>
+      <p>Entre em um cofre existente ou crie um novo para a sua mesa.</p>
+      <div id="vault-list"></div>
+      <button id="show-create-btn" class="auth-btn-secondary">+ Criar novo cofre</button>
+    </div>
+
+    <div id="panel-create" class="auth-panel hidden">
+      <h1>Criar novo cofre</h1>
+      <p>Defina um nome e uma senha. Quem quiser entrar vai precisar dela.</p>
+      <input id="create-name" maxlength="40" placeholder="Nome do cofre (ex: Caso do Farol)" spellcheck="false" />
+      <input id="create-password" type="password" maxlength="60" placeholder="Senha do cofre" />
+      <div class="auth-error" id="create-error"></div>
+      <button id="create-submit" class="auth-btn-primary">Criar cofre</button>
+      <button id="create-back" class="auth-btn-link">Voltar</button>
+    </div>
+
+    <div id="panel-unlock" class="auth-panel hidden">
+      <h1 id="unlock-vault-name">Cofre protegido</h1>
+      <p>Digite a senha para entrar neste cofre.</p>
+      <input id="unlock-password" type="password" maxlength="60" placeholder="Senha do cofre" />
+      <div class="auth-error" id="unlock-error"></div>
+      <button id="unlock-submit" class="auth-btn-primary">Entrar</button>
+      <button id="unlock-back" class="auth-btn-link">Voltar aos cofres</button>
+    </div>
+
+    <div id="panel-name" class="auth-panel hidden">
       <h1>Entrar no quadro</h1>
       <p>Como você quer aparecer para o resto da mesa?</p>
       <input id="name-input" maxlength="24" placeholder="Seu nome" spellcheck="false" />
-      <button id="name-submit">Entrar</button>
+      <button id="name-submit" class="auth-btn-primary">Entrar</button>
     </div>
+
   </div>
 
   <template id="node-template">
