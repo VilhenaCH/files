@@ -34,7 +34,9 @@ const nodeTemplate = document.getElementById("node-template");
 const hint = document.getElementById("hint");
 const zoomLevelLabel = document.getElementById("zoom-level");
 const boardTitleInput = document.getElementById("board-title");
-const playerBadge = document.getElementById("player-badge");
+const playerMenuBtn = document.getElementById("player-menu-btn");
+const playerMenu = document.getElementById("player-menu");
+const playerNameLabel = document.getElementById("player-name-label");
 const authOverlay = document.getElementById("auth-overlay");
 
 const panels = {
@@ -57,6 +59,8 @@ async function hashPassword(pw) {
   const buf = await crypto.subtle.digest("SHA-256", enc);
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+playerNameLabel.textContent = playerName;
+let nameMode = "enter"; // "enter" (primeira entrada) ou "rename" (trocar nome sem sair do cofre)
 
 // ------------------------------------------------------------------
 // Fluxo de cofres: lobby -> criar / desbloquear -> nome -> quadro
@@ -75,6 +79,7 @@ async function init() {
 }
 
 async function showLobby() {
+  authOverlay.classList.remove("hidden-overlay");
   history.replaceState(null, "", location.pathname);
   showPanel("lobby");
   const list = document.getElementById("vault-list");
@@ -184,6 +189,9 @@ function finalizeBoard(id, vaultName) {
   if (playerName) {
     enterBoard();
   } else {
+    nameMode = "enter";
+    panels.name.querySelector("h1").textContent = "Entrar no quadro";
+    panels.name.querySelector("p").textContent = "Como você quer aparecer para o resto da mesa?";
     showPanel("name");
     document.getElementById("name-input").focus();
   }
@@ -198,17 +206,68 @@ function submitName() {
   if (!v) return;
   playerName = v;
   localStorage.setItem("canvas_player_name", v);
-  enterBoard();
+  playerNameLabel.textContent = playerName;
+  if (nameMode === "rename") {
+    authOverlay.classList.add("hidden-overlay");
+  } else {
+    enterBoard();
+  }
 }
 
 function enterBoard() {
   authOverlay.classList.add("hidden-overlay");
-  playerBadge.textContent = "Você: " + playerName;
+  playerNameLabel.textContent = playerName;
   getDoc(boardRef).then((snap) => {
     if (snap.exists() && snap.data().title) boardTitleInput.value = snap.data().title;
   });
   subscribeNodes();
   subscribeEdges();
+}
+
+// ------------------------------------------------------------------
+// Menu do jogador: mudar nome / trocar de cofre (sem recarregar a página)
+// ------------------------------------------------------------------
+playerMenuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  playerMenu.classList.toggle("open");
+});
+document.addEventListener("click", () => playerMenu.classList.remove("open"));
+
+document.getElementById("rename-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  playerMenu.classList.remove("open");
+  nameMode = "rename";
+  panels.name.querySelector("h1").textContent = "Mudar nome";
+  panels.name.querySelector("p").textContent = "Como você quer ser chamado agora?";
+  document.getElementById("name-input").value = playerName;
+  authOverlay.classList.remove("hidden-overlay");
+  showPanel("name");
+  document.getElementById("name-input").focus();
+});
+
+document.getElementById("switch-vault-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  playerMenu.classList.remove("open");
+  resetBoardState();
+  authOverlay.classList.remove("hidden-overlay");
+  showLobby();
+});
+
+function resetBoardState() {
+  if (unsubNodes) { unsubNodes(); unsubNodes = null; }
+  if (unsubEdges) { unsubEdges(); unsubEdges = null; }
+  nodesLayer.innerHTML = "";
+  edgesGroup.innerHTML = "";
+  nodeEls.clear();
+  nodeData.clear();
+  edgeEls.clear();
+  edgeData.clear();
+  boardId = null;
+  boardRef = null;
+  nodesCol = null;
+  edgesCol = null;
+  boardTitleInput.value = "";
+  boardTitleInput.placeholder = "Quadro de Investigação";
 }
 
 document.getElementById("share-btn").onclick = async (e) => {
@@ -371,6 +430,7 @@ document.getElementById("fab-add").onclick = () => {
 const nodeEls = new Map();
 const nodeData = new Map();
 const suppressRemote = new Set();
+let unsubNodes = null;
 
 function createTextNode(x, y) {
   addDoc(nodesCol, {
@@ -386,7 +446,7 @@ async function createImageNode(x, y, dataUrl) {
 }
 
 function subscribeNodes() {
-  onSnapshot(nodesCol, (snap) => {
+  unsubNodes = onSnapshot(nodesCol, (snap) => {
     snap.docChanges().forEach((change) => {
       const id = change.doc.id;
       if (change.type === "removed") {
@@ -426,6 +486,12 @@ function buildNodeEl(id) {
   textEl.dataset.placeholder = "Escreva algo…";
 
   bar.addEventListener("pointerdown", (e) => startDragNode(e, id, el));
+
+  // impede que o pointerdown desses controles borbulhe até a barra
+  // (senão o navegador entende como "começou a arrastar o card")
+  colorToggle.addEventListener("pointerdown", (e) => e.stopPropagation());
+  delBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+  colorMenu.addEventListener("pointerdown", (e) => e.stopPropagation());
 
   colorToggle.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -580,9 +646,10 @@ function nodeCenter(id) {
 // ------------------------------------------------------------------
 const edgeEls = new Map();
 const edgeData = new Map();
+let unsubEdges = null;
 
 function subscribeEdges() {
-  onSnapshot(edgesCol, (snap) => {
+  unsubEdges = onSnapshot(edgesCol, (snap) => {
     snap.docChanges().forEach((change) => {
       const id = change.doc.id;
       if (change.type === "removed") {
