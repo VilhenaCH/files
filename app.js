@@ -2,7 +2,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, setDoc, getDoc
+  onSnapshot, setDoc, getDoc, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ------------------------------------------------------------------
@@ -10,21 +10,15 @@ import {
 // ------------------------------------------------------------------
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const vaultsCol = collection(db, "vaults");
 
 // ------------------------------------------------------------------
-// Board / player identity
+// Estado de identidade / cofre (definido depois do fluxo de auth)
 // ------------------------------------------------------------------
-const url = new URL(location.href);
-let boardId = url.searchParams.get("board");
-if (!boardId) {
-  boardId = Math.random().toString(36).slice(2, 8);
-  url.searchParams.set("board", boardId);
-  history.replaceState(null, "", url.toString());
-}
-const boardRef = doc(db, "boards", boardId);
-const nodesCol = collection(db, "boards", boardId, "nodes");
-const edgesCol = collection(db, "boards", boardId, "edges");
-
+let boardId = null;
+let boardRef = null;
+let nodesCol = null;
+let edgesCol = null;
 let playerName = localStorage.getItem("canvas_player_name") || "";
 
 // ------------------------------------------------------------------
@@ -41,13 +35,202 @@ const hint = document.getElementById("hint");
 const zoomLevelLabel = document.getElementById("zoom-level");
 const boardTitleInput = document.getElementById("board-title");
 const playerBadge = document.getElementById("player-badge");
-const nameOverlay = document.getElementById("name-overlay");
-const nameInput = document.getElementById("name-input");
+const authOverlay = document.getElementById("auth-overlay");
+
+const panels = {
+  lobby: document.getElementById("panel-lobby"),
+  create: document.getElementById("panel-create"),
+  unlock: document.getElementById("panel-unlock"),
+  name: document.getElementById("panel-name"),
+};
+function showPanel(key) {
+  Object.values(panels).forEach((p) => p.classList.add("hidden"));
+  panels[key].classList.remove("hidden");
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+async function hashPassword(pw) {
+  const enc = new TextEncoder().encode(pw);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 // ------------------------------------------------------------------
-// Viewport state (pan & zoom)
+// Fluxo de cofres: lobby -> criar / desbloquear -> nome -> quadro
 // ------------------------------------------------------------------
-const view = { x: 0, y: 0, scale: 1 };
+let currentUnlockTarget = null;
+
+init();
+
+async function init() {
+  const urlBoard = new URL(location.href).searchParams.get("board");
+  if (urlBoard) {
+    await tryEnterVault(urlBoard);
+  } else {
+    showLobby();
+  }
+}
+
+async function showLobby() {
+  history.replaceState(null, "", location.pathname);
+  showPanel("lobby");
+  const list = document.getElementById("vault-list");
+  list.innerHTML = '<div class="vault-loading">Carregando cofres…</div>';
+  try {
+    const snap = await getDocs(vaultsCol);
+    if (snap.empty) {
+      list.innerHTML = '<div class="vault-empty">Nenhum cofre criado ainda. Crie o primeiro!</div>';
+      return;
+    }
+    list.innerHTML = "";
+    snap.forEach((d) => {
+      const data = d.data();
+      const row = document.createElement("button");
+      row.className = "vault-row";
+      row.innerHTML = `<span class="vault-row-name">${escapeHtml(data.name || "Sem nome")}</span><span class="vault-row-arrow">›</span>`;
+      row.onclick = () => tryEnterVault(d.id);
+      list.appendChild(row);
+    });
+  } catch (err) {
+    list.innerHTML = '<div class="vault-empty">Não foi possível carregar os cofres. Confira o firebase-config.js e as regras do Firestore.</div>';
+    console.error(err);
+  }
+}
+
+async function tryEnterVault(id) {
+  let snap;
+  try {
+    snap = await getDoc(doc(db, "vaults", id));
+  } catch (err) {
+    console.error(err);
+    showLobby();
+    return;
+  }
+  if (!snap.exists()) {
+    finalizeBoard(id, null);
+    return;
+  }
+  const data = snap.data();
+  if (localStorage.getItem("vault_unlocked_" + id)) {
+    finalizeBoard(id, data.name);
+    return;
+  }
+  currentUnlockTarget = { id, data };
+  document.getElementById("unlock-vault-name").textContent = data.name || "Cofre protegido";
+  document.getElementById("unlock-error").textContent = "";
+  document.getElementById("unlock-password").value = "";
+  showPanel("unlock");
+}
+
+document.getElementById("unlock-submit").onclick = async () => {
+  const pw = document.getElementById("unlock-password").value;
+  const errEl = document.getElementById("unlock-error");
+  if (!pw) { errEl.textContent = "Digite a senha."; return; }
+  const hash = await hashPassword(pw);
+  if (hash === currentUnlockTarget.data.passwordHash) {
+    localStorage.setItem("vault_unlocked_" + currentUnlockTarget.id, "1");
+    finalizeBoard(currentUnlockTarget.id, currentUnlockTarget.data.name);
+  } else {
+    errEl.textContent = "Senha incorreta.";
+  }
+};
+document.getElementById("unlock-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("unlock-submit").click();
+});
+document.getElementById("unlock-back").onclick = showLobby;
+
+document.getElementById("show-create-btn").onclick = () => {
+  document.getElementById("create-name").value = "";
+  document.getElementById("create-password").value = "";
+  document.getElementById("create-error").textContent = "";
+  showPanel("create");
+};
+document.getElementById("create-back").onclick = showLobby;
+document.getElementById("create-submit").onclick = async () => {
+  const name = document.getElementById("create-name").value.trim();
+  const pw = document.getElementById("create-password").value;
+  const errEl = document.getElementById("create-error");
+  if (!name) { errEl.textContent = "Dê um nome ao cofre."; return; }
+  if (!pw || pw.length < 4) { errEl.textContent = "Escolha uma senha com pelo menos 4 caracteres."; return; }
+  errEl.textContent = "";
+  const id = Math.random().toString(36).slice(2, 8);
+  const passwordHash = await hashPassword(pw);
+  try {
+    await setDoc(doc(db, "vaults", id), { name, passwordHash, createdAt: Date.now() });
+  } catch (err) {
+    errEl.textContent = "Não foi possível criar o cofre. Confira a configuração do Firebase.";
+    console.error(err);
+    return;
+  }
+  localStorage.setItem("vault_unlocked_" + id, "1");
+  finalizeBoard(id, name);
+};
+
+function finalizeBoard(id, vaultName) {
+  boardId = id;
+  boardRef = doc(db, "boards", id);
+  nodesCol = collection(db, "boards", id, "nodes");
+  edgesCol = collection(db, "boards", id, "edges");
+
+  const u = new URL(location.href);
+  u.searchParams.set("board", id);
+  history.replaceState(null, "", u.toString());
+
+  if (vaultName) boardTitleInput.placeholder = vaultName;
+
+  if (playerName) {
+    enterBoard();
+  } else {
+    showPanel("name");
+    document.getElementById("name-input").focus();
+  }
+}
+
+document.getElementById("name-submit").onclick = submitName;
+document.getElementById("name-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitName();
+});
+function submitName() {
+  const v = document.getElementById("name-input").value.trim();
+  if (!v) return;
+  playerName = v;
+  localStorage.setItem("canvas_player_name", v);
+  enterBoard();
+}
+
+function enterBoard() {
+  authOverlay.classList.add("hidden-overlay");
+  playerBadge.textContent = "Você: " + playerName;
+  getDoc(boardRef).then((snap) => {
+    if (snap.exists() && snap.data().title) boardTitleInput.value = snap.data().title;
+  });
+  subscribeNodes();
+  subscribeEdges();
+}
+
+document.getElementById("share-btn").onclick = async (e) => {
+  await navigator.clipboard.writeText(location.href);
+  e.target.classList.add("copied");
+  e.target.textContent = "Link copiado!";
+  setTimeout(() => { e.target.classList.remove("copied"); e.target.textContent = "Copiar link"; }, 1500);
+};
+
+let titleTimer;
+boardTitleInput.addEventListener("input", () => {
+  if (!boardRef) return;
+  clearTimeout(titleTimer);
+  titleTimer = setTimeout(() => {
+    setDoc(boardRef, { title: boardTitleInput.value }, { merge: true });
+  }, 400);
+});
+
+// ------------------------------------------------------------------
+// Viewport state (pan & zoom) — mouse, trackpad e toque (com pinça)
+// ------------------------------------------------------------------
+const view = { x: 400, y: 250, scale: 1 };
 const MIN_SCALE = 0.15, MAX_SCALE = 2.5;
 
 function applyTransform() {
@@ -69,10 +252,9 @@ function zoomAt(clientX, clientY, factor) {
   view.y = clientY - r.top - before.y * view.scale;
   applyTransform();
 }
-view.x = 400; view.y = 250;
 applyTransform();
 
-// wheel = pan; ctrl/cmd+wheel = zoom (trackpad pinch sends ctrlKey too)
+// --- Zoom com scroll/trackpad (desktop) ---
 viewport.addEventListener("wheel", (e) => {
   e.preventDefault();
   if (e.ctrlKey || e.metaKey) {
@@ -97,26 +279,83 @@ document.getElementById("zoom-reset").onclick = () => {
   view.x = 400; view.y = 250; view.scale = 1; applyTransform();
 };
 
-// Pan by dragging empty background (left-click) or middle-click anywhere
-let panState = null;
-viewport.addEventListener("pointerdown", (e) => {
-  if (e.target !== viewport && e.target !== content && e.target !== edgeLayer && e.target !== nodesLayer) return;
-  if (e.button !== 0 && e.button !== 1) return;
-  panState = { startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
-  viewport.classList.add("panning");
-  viewport.setPointerCapture(e.pointerId);
-});
-viewport.addEventListener("pointermove", (e) => {
-  if (!panState) return;
-  view.x = panState.vx + (e.clientX - panState.startX);
-  view.y = panState.vy + (e.clientY - panState.startY);
-  applyTransform();
-});
-viewport.addEventListener("pointerup", () => { panState = null; viewport.classList.remove("panning"); });
+// --- Pan (mouse/toque) + pinça (toque com 2 dedos) ---
+function isBackgroundTarget(t) {
+  return t === viewport || t === content || t === edgeLayer || t === nodesLayer;
+}
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function mid(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
 
-// double-click empty canvas -> create card
+const activePointers = new Map();
+let panState = null;
+let pinchState = null;
+
+viewport.addEventListener("pointerdown", (e) => {
+  if (!isBackgroundTarget(e.target)) return;
+  if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
+
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  viewport.setPointerCapture(e.pointerId);
+  hint.classList.add("hide");
+
+  if (activePointers.size === 1) {
+    panState = { startX: e.clientX, startY: e.clientY, vx: view.x, vy: view.y };
+    pinchState = null;
+    viewport.classList.add("panning");
+  } else if (activePointers.size === 2) {
+    panState = null;
+    const pts = [...activePointers.values()];
+    pinchState = {
+      startDist: dist(pts[0], pts[1]) || 1,
+      startMid: mid(pts[0], pts[1]),
+      startScale: view.scale,
+      startVX: view.x,
+      startVY: view.y,
+    };
+  }
+});
+
+viewport.addEventListener("pointermove", (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (activePointers.size >= 2 && pinchState) {
+    const pts = [...activePointers.values()];
+    const d = dist(pts[0], pts[1]) || 1;
+    const m = mid(pts[0], pts[1]);
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchState.startScale * (d / pinchState.startDist)));
+    const r = viewport.getBoundingClientRect();
+    const worldX = (pinchState.startMid.x - r.left - pinchState.startVX) / pinchState.startScale;
+    const worldY = (pinchState.startMid.y - r.top - pinchState.startVY) / pinchState.startScale;
+    view.scale = newScale;
+    view.x = m.x - r.left - worldX * newScale;
+    view.y = m.y - r.top - worldY * newScale;
+    applyTransform();
+  } else if (activePointers.size === 1 && panState) {
+    view.x = panState.vx + (e.clientX - panState.startX);
+    view.y = panState.vy + (e.clientY - panState.startY);
+    applyTransform();
+  }
+});
+
+function endPointer(e) {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.delete(e.pointerId);
+  if (activePointers.size < 2) pinchState = null;
+  if (activePointers.size === 1) {
+    const [remaining] = activePointers.values();
+    panState = { startX: remaining.x, startY: remaining.y, vx: view.x, vy: view.y };
+  } else if (activePointers.size === 0) {
+    panState = null;
+    viewport.classList.remove("panning");
+  }
+}
+viewport.addEventListener("pointerup", endPointer);
+viewport.addEventListener("pointercancel", endPointer);
+
+// duplo clique / duplo toque no vazio -> criar card
 viewport.addEventListener("dblclick", (e) => {
-  if (e.target !== viewport && e.target !== content && e.target !== edgeLayer && e.target !== nodesLayer) return;
+  if (!isBackgroundTarget(e.target)) return;
   const p = screenToCanvas(e.clientX, e.clientY);
   createTextNode(p.x - 110, p.y - 45);
 });
@@ -126,60 +365,12 @@ document.getElementById("fab-add").onclick = () => {
   createTextNode(p.x - 110, p.y - 45);
 };
 
-// hide the hint after first interaction
-["pointerdown", "dblclick"].forEach(evt =>
-  viewport.addEventListener(evt, () => hint.classList.add("hide"), { once: true })
-);
-
-// ------------------------------------------------------------------
-// Player name overlay
-// ------------------------------------------------------------------
-function startApp() {
-  playerBadge.textContent = "Você: " + playerName;
-  nameOverlay.classList.add("hidden");
-  subscribeNodes();
-  subscribeEdges();
-}
-if (playerName) {
-  startApp();
-} else {
-  nameInput.focus();
-}
-document.getElementById("name-submit").onclick = submitName;
-nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitName(); });
-function submitName() {
-  const v = nameInput.value.trim();
-  if (!v) return;
-  playerName = v;
-  localStorage.setItem("canvas_player_name", v);
-  startApp();
-}
-
-// board title (shared)
-getDoc(boardRef).then((snap) => {
-  if (snap.exists() && snap.data().title) boardTitleInput.value = snap.data().title;
-});
-let titleTimer;
-boardTitleInput.addEventListener("input", () => {
-  clearTimeout(titleTimer);
-  titleTimer = setTimeout(() => {
-    setDoc(boardRef, { title: boardTitleInput.value }, { merge: true });
-  }, 400);
-});
-
-document.getElementById("share-btn").onclick = async (e) => {
-  await navigator.clipboard.writeText(url.toString());
-  e.target.classList.add("copied");
-  e.target.textContent = "Link copiado!";
-  setTimeout(() => { e.target.classList.remove("copied"); e.target.textContent = "Copiar link"; }, 1500);
-};
-
 // ------------------------------------------------------------------
 // Nodes: local state + rendering
 // ------------------------------------------------------------------
-const nodeEls = new Map();     // id -> element
-const nodeData = new Map();    // id -> latest known data
-const suppressRemote = new Set(); // ids currently being dragged/resized locally
+const nodeEls = new Map();
+const nodeData = new Map();
+const suppressRemote = new Set();
 
 function createTextNode(x, y) {
   addDoc(nodesCol, {
@@ -187,7 +378,6 @@ function createTextNode(x, y) {
     text: "", createdBy: playerName, updatedAt: Date.now()
   });
 }
-
 async function createImageNode(x, y, dataUrl) {
   await addDoc(nodesCol, {
     type: "image", x, y, width: 220, height: 220, color: 0,
@@ -208,7 +398,7 @@ function subscribeNodes() {
       }
       const data = change.doc.data();
       nodeData.set(id, data);
-      if (suppressRemote.has(id)) return; // don't fight local drag/resize
+      if (suppressRemote.has(id)) return;
       let el = nodeEls.get(id);
       if (!el) {
         el = buildNodeEl(id);
@@ -235,16 +425,14 @@ function buildNodeEl(id) {
 
   textEl.dataset.placeholder = "Escreva algo…";
 
-  // drag
   bar.addEventListener("pointerdown", (e) => startDragNode(e, id, el));
 
-  // color menu
   colorToggle.addEventListener("click", (e) => {
     e.stopPropagation();
-    document.querySelectorAll(".color-menu.open").forEach(m => { if (m !== colorMenu) m.classList.remove("open"); });
+    document.querySelectorAll(".color-menu.open").forEach((m) => { if (m !== colorMenu) m.classList.remove("open"); });
     colorMenu.classList.toggle("open");
   });
-  colorMenu.querySelectorAll("button").forEach(btn => {
+  colorMenu.querySelectorAll("button").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const c = Number(btn.dataset.color);
@@ -255,19 +443,16 @@ function buildNodeEl(id) {
   });
   document.addEventListener("click", () => colorMenu.classList.remove("open"));
 
-  // delete
   delBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (confirm("Excluir este card?")) {
       deleteDoc(doc(nodesCol, id));
-      // remove edges connected to it
       edgeData.forEach((ed, eid) => {
         if (ed.fromNode === id || ed.toNode === id) deleteDoc(doc(edgesCol, eid));
       });
     }
   });
 
-  // text edit
   let textTimer;
   textEl.addEventListener("input", () => {
     clearTimeout(textTimer);
@@ -276,10 +461,7 @@ function buildNodeEl(id) {
   });
   textEl.addEventListener("pointerdown", (e) => e.stopPropagation());
 
-  // resize
   resizeHandle.addEventListener("pointerdown", (e) => startResizeNode(e, id, el));
-
-  // connect
   connectHandle.addEventListener("pointerdown", (e) => startConnect(e, id, el));
 
   return el;
@@ -301,10 +483,10 @@ function paintNode(el, data) {
   }
 }
 
-// ---- drag ----
 function startDragNode(e, id, el) {
   e.stopPropagation();
   e.preventDefault();
+  el.setPointerCapture(e.pointerId);
   const data = nodeData.get(id);
   const startCanvas = screenToCanvas(e.clientX, e.clientY);
   const origin = { x: data.x, y: data.y };
@@ -321,20 +503,22 @@ function startDragNode(e, id, el) {
     renderAllEdges();
   }
   function up() {
-    document.removeEventListener("pointermove", move);
-    document.removeEventListener("pointerup", up);
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
     el.classList.remove("dragging");
     const d = nodeData.get(id);
     updateDoc(doc(nodesCol, id), { x: d.x, y: d.y }).finally(() => suppressRemote.delete(id));
   }
-  document.addEventListener("pointermove", move);
-  document.addEventListener("pointerup", up);
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
 }
 
-// ---- resize ----
 function startResizeNode(e, id, el) {
   e.stopPropagation();
   e.preventDefault();
+  el.setPointerCapture(e.pointerId);
   const data = nodeData.get(id);
   const start = { x: e.clientX, y: e.clientY };
   const origin = { w: data.width || 220, h: data.height || 140 };
@@ -351,16 +535,17 @@ function startResizeNode(e, id, el) {
     renderAllEdges();
   }
   function up() {
-    document.removeEventListener("pointermove", move);
-    document.removeEventListener("pointerup", up);
+    el.removeEventListener("pointermove", move);
+    el.removeEventListener("pointerup", up);
+    el.removeEventListener("pointercancel", up);
     const d = nodeData.get(id);
     updateDoc(doc(nodesCol, id), { width: d.width, height: d.height }).finally(() => suppressRemote.delete(id));
   }
-  document.addEventListener("pointermove", move);
-  document.addEventListener("pointerup", up);
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
 }
 
-// ---- connect ----
 function startConnect(e, fromId, el) {
   e.stopPropagation();
   e.preventDefault();
@@ -413,7 +598,6 @@ function subscribeEdges() {
 }
 
 function rectEdgePoint(data, towards) {
-  // returns the point on the rectangle border closest to "towards", for a nicer arrow landing
   const cx = data.x + (data.width || 220) / 2;
   const cy = data.y + (data.height || 140) / 2;
   const hw = (data.width || 220) / 2, hh = (data.height || 140) / 2;
@@ -424,7 +608,6 @@ function rectEdgePoint(data, towards) {
   const s = Math.min(scaleX, scaleY);
   return { x: cx + dx * s, y: cy + dy * s };
 }
-
 function bezier(a, b) {
   const dx = (b.x - a.x) * 0.5;
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
@@ -455,13 +638,12 @@ function renderAllEdges() {
       edgesGroup.appendChild(g);
       entry = { g, path, label };
       edgeEls.set(id, entry);
-
       path.addEventListener("click", () => onEdgeClick(id));
     }
     entry.path.setAttribute("d", d);
-    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-    entry.label.setAttribute("x", mid.x);
-    entry.label.setAttribute("y", mid.y - 6);
+    const m = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    entry.label.setAttribute("x", m.x);
+    entry.label.setAttribute("y", m.y - 6);
     entry.label.textContent = data.label || "";
   });
 }
@@ -481,6 +663,7 @@ function onEdgeClick(id) {
 // Paste image
 // ------------------------------------------------------------------
 document.addEventListener("paste", async (e) => {
+  if (!nodesCol) return;
   const items = e.clipboardData?.items || [];
   for (const item of items) {
     if (item.type.startsWith("image/")) {
