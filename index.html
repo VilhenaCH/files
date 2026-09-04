@@ -17,7 +17,13 @@
       <input id="board-title" spellcheck="false" value="Quadro de Investigação" />
     </div>
     <div id="topbar-right">
-      <span id="player-badge"></span>
+      <div id="player-menu-wrap">
+        <button id="player-menu-btn">Você: <span id="player-name-label"></span> ▾</button>
+        <div id="player-menu" class="dropdown-menu">
+          <button id="rename-btn">Mudar nome</button>
+          <button id="switch-vault-btn">Trocar de cofre</button>
+        </div>
+      </div>
       <button id="share-btn" title="Copiar link do quadro">Copiar link</button>
     </div>
   </header>
