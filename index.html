@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Quadro de Investigação</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Barra superior -->
+  <header id="topbar">
+    <div id="topbar-left">
+      <span id="board-icon">◆</span>
+      <input id="board-title" spellcheck="false" value="Quadro de Investigação" />
+    </div>
+    <div id="topbar-right">
+      <span id="player-badge"></span>
+      <button id="share-btn" title="Copiar link do quadro">Copiar link</button>
+    </div>
+  </header>
+
+  <!-- Viewport do canvas -->
+  <div id="canvas-viewport">
+    <div id="canvas-content">
+      <svg id="edge-layer">
+        <defs>
+          <marker id="arrowhead" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" class="arrow-fill"></path>
+          </marker>
+        </defs>
+        <g id="edges-group"></g>
+        <path id="pending-edge" class="pending-edge" d="" style="display:none"></path>
+      </svg>
+      <div id="nodes-layer"></div>
+    </div>
+  </div>
+
+  <!-- Dica de uso -->
+  <div id="hint">Duplo clique no quadro para criar um card · Cole (Ctrl+V) uma imagem para adicioná-la · Arraste a partir do ponto lateral de um card para conectar</div>
+
+  <!-- Controles de zoom -->
+  <div id="zoom-controls">
+    <button id="zoom-out" title="Diminuir zoom">−</button>
+    <span id="zoom-level">100%</span>
+    <button id="zoom-in" title="Aumentar zoom">+</button>
+    <button id="zoom-reset" title="Centralizar">⤢</button>
+  </div>
+
+  <!-- Botão flutuante de novo card -->
+  <button id="fab-add" title="Adicionar card">+</button>
+
+  <!-- Overlay de nome de jogador -->
+  <div id="name-overlay">
+    <div id="name-card">
+      <h1>Entrar no quadro</h1>
+      <p>Como você quer aparecer para o resto da mesa?</p>
+      <input id="name-input" maxlength="24" placeholder="Seu nome" spellcheck="false" />
+      <button id="name-submit">Entrar</button>
+    </div>
+  </div>
+
+  <template id="node-template">
+    <div class="node" data-color="0">
+      <div class="node-bar">
+        <button class="node-color-toggle" title="Cor"></button>
+        <div class="color-menu">
+          <button data-color="0"></button>
+          <button data-color="1"></button>
+          <button data-color="2"></button>
+          <button data-color="3"></button>
+          <button data-color="4"></button>
+          <button data-color="5"></button>
+          <button data-color="6"></button>
+        </div>
+        <button class="node-delete" title="Excluir">×</button>
+      </div>
+      <div class="node-body">
+        <div class="node-text" contenteditable="true" spellcheck="false"></div>
+        <img class="node-image" draggable="false" />
+      </div>
+      <div class="connect-handle" title="Arraste para conectar"></div>
+      <div class="resize-handle" title="Redimensionar"></div>
+    </div>
+  </template>
+
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
