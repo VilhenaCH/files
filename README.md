@@ -16,6 +16,13 @@ organizado em **cofres** protegidos por senha.
   Cada cofre é um quadro isolado — cards e conexões nunca se misturam
   entre cofres diferentes. Depois de digitar a senha certa uma vez, o
   navegador lembra e não pede de novo nesse aparelho.
+- **Exclusão de cofre**: na criação, além da senha de entrada, também
+  se define uma **senha de exclusão** separada. Ela é a única forma de
+  apagar o cofre depois (pelo ícone 🗑 na lista de cofres, ou pelo menu
+  "Você: nome ▾" enquanto está dentro dele) — apaga o cofre e todos os
+  cards e conexões dele, sem volta. Cofres criados antes desse recurso
+  não têm senha de exclusão cadastrada e não podem ser apagados por
+  essa tela.
 - **Tempo real**: Firebase Firestore. Cada card e cada seta é um
   documento separado, então quando alguém move um card ou escreve algo,
   só aquele documento é sincronizado — todo mundo com o link aberto vê
@@ -33,6 +40,17 @@ organizado em **cofres** protegidos por senha.
   com um dedo move o quadro, pinçar com dois dedos dá zoom, e os
   controles dos cards (mover, redimensionar, conectar) ficam sempre
   visíveis em telas sem mouse, com alvos maiores pro dedo.
+- **Área limitada**: o quadro tem um tamanho fixo (3600×2400 "pixels de
+  mundo" por padrão), marcado por uma borda tracejada. Os cards não
+  saem desse limite ao serem criados, arrastados ou redimensionados —
+  isso evita o problema de anotações se perdendo num espaço infinito.
+  O botão ⤢ na barra de zoom sempre reenquadra o quadro inteiro na
+  tela. Se precisar de mais espaço, dá pra aumentar `WORLD_W` e
+  `WORLD_H` no topo do `app.js`.
+- **Localizar card**: o botão 🔍 Localizar na barra superior abre uma
+  busca por texto entre os cards do cofre atual. Clicar num resultado
+  leva a câmera direto até o card e pisca uma borda nele por alguns
+  segundos, pra facilitar achar anotações antigas.
 
 > **Sobre a segurança da senha**: a senha do cofre é comparada dentro
 > do navegador (hash SHA-256), sem servidor próprio por trás. Isso é
@@ -123,7 +141,10 @@ service cloud.firestore {
 | Conectar dois cards | Arrastar a partir do ponto na lateral direita até outro card |
 | Editar/remover conexão | Clicar na seta |
 | Pan | Arrastar o fundo vazio |
-| Zoom | `Ctrl` + scroll, ou os botões `+`/`−` no canto |
+| Zoom | `Ctrl` + scroll, pinça no toque, ou os botões `+`/`−` |
+| Ver o quadro inteiro | Botão `⤢` no canto |
+| Localizar um card | Botão 🔍 Localizar na barra superior |
+| Mudar de nome / trocar de cofre | Menu "Você: nome ▾" na barra superior |
 | Renomear o quadro | Clicar no título no topo |
 
 ## Possíveis próximos passos
