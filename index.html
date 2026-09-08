@@ -17,6 +17,13 @@
       <input id="board-title" spellcheck="false" value="Quadro de Investigação" />
     </div>
     <div id="topbar-right">
+      <div id="search-wrap">
+        <button id="search-toggle" title="Localizar card">🔍 <span class="btn-label">Localizar</span></button>
+        <div id="search-panel" class="dropdown-menu search-panel">
+          <input id="search-input" placeholder="Buscar por texto no card…" spellcheck="false" />
+          <div id="search-results"></div>
+        </div>
+      </div>
       <div id="player-menu-wrap">
         <button id="player-menu-btn">Você: <span id="player-name-label"></span> ▾</button>
         <div id="player-menu" class="dropdown-menu">
@@ -31,6 +38,7 @@
   <!-- Viewport do canvas -->
   <div id="canvas-viewport">
     <div id="canvas-content">
+      <div id="world-bounds"></div>
       <svg id="edge-layer">
         <defs>
           <marker id="arrowhead" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
@@ -52,7 +60,7 @@
     <button id="zoom-out" title="Diminuir zoom">−</button>
     <span id="zoom-level">100%</span>
     <button id="zoom-in" title="Aumentar zoom">+</button>
-    <button id="zoom-reset" title="Centralizar">⤢</button>
+    <button id="zoom-reset" title="Ver o quadro inteiro">⤢</button>
   </div>
 
   <!-- Botão flutuante de novo card -->
