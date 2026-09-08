@@ -2,7 +2,7 @@ import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, setDoc, getDoc, getDocs
+  onSnapshot, setDoc, getDoc, getDocs, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // ------------------------------------------------------------------
@@ -19,6 +19,7 @@ let boardId = null;
 let boardRef = null;
 let nodesCol = null;
 let edgesCol = null;
+let currentVaultName = null;
 let playerName = localStorage.getItem("canvas_player_name") || "";
 
 // ------------------------------------------------------------------
@@ -31,6 +32,7 @@ const edgeLayer = document.getElementById("edge-layer");
 const edgesGroup = document.getElementById("edges-group");
 const pendingEdgePath = document.getElementById("pending-edge");
 const nodeTemplate = document.getElementById("node-template");
+const worldBoundsEl = document.getElementById("world-bounds");
 const hint = document.getElementById("hint");
 const zoomLevelLabel = document.getElementById("zoom-level");
 const boardTitleInput = document.getElementById("board-title");
@@ -44,6 +46,7 @@ const panels = {
   create: document.getElementById("panel-create"),
   unlock: document.getElementById("panel-unlock"),
   name: document.getElementById("panel-name"),
+  delete: document.getElementById("panel-delete"),
 };
 function showPanel(key) {
   Object.values(panels).forEach((p) => p.classList.add("hidden"));
@@ -93,10 +96,20 @@ async function showLobby() {
     list.innerHTML = "";
     snap.forEach((d) => {
       const data = d.data();
-      const row = document.createElement("button");
+      const row = document.createElement("div");
       row.className = "vault-row";
-      row.innerHTML = `<span class="vault-row-name">${escapeHtml(data.name || "Sem nome")}</span><span class="vault-row-arrow">›</span>`;
-      row.onclick = () => tryEnterVault(d.id);
+      row.innerHTML = `
+        <button class="vault-row-enter">
+          <span class="vault-row-name">${escapeHtml(data.name || "Sem nome")}</span>
+          <span class="vault-row-arrow">›</span>
+        </button>
+        <button class="vault-row-delete" title="Excluir cofre">🗑</button>
+      `;
+      row.querySelector(".vault-row-enter").onclick = () => tryEnterVault(d.id);
+      row.querySelector(".vault-row-delete").onclick = (e) => {
+        e.stopPropagation();
+        promptDeleteVault(d.id, data.name);
+      };
       list.appendChild(row);
     });
   } catch (err) {
@@ -150,6 +163,7 @@ document.getElementById("unlock-back").onclick = showLobby;
 document.getElementById("show-create-btn").onclick = () => {
   document.getElementById("create-name").value = "";
   document.getElementById("create-password").value = "";
+  document.getElementById("create-delete-password").value = "";
   document.getElementById("create-error").textContent = "";
   showPanel("create");
 };
@@ -157,14 +171,17 @@ document.getElementById("create-back").onclick = showLobby;
 document.getElementById("create-submit").onclick = async () => {
   const name = document.getElementById("create-name").value.trim();
   const pw = document.getElementById("create-password").value;
+  const deletePw = document.getElementById("create-delete-password").value;
   const errEl = document.getElementById("create-error");
   if (!name) { errEl.textContent = "Dê um nome ao cofre."; return; }
-  if (!pw || pw.length < 4) { errEl.textContent = "Escolha uma senha com pelo menos 4 caracteres."; return; }
+  if (!pw || pw.length < 4) { errEl.textContent = "Escolha uma senha de entrada com pelo menos 4 caracteres."; return; }
+  if (!deletePw || deletePw.length < 4) { errEl.textContent = "Escolha uma senha de exclusão com pelo menos 4 caracteres."; return; }
   errEl.textContent = "";
   const id = Math.random().toString(36).slice(2, 8);
   const passwordHash = await hashPassword(pw);
+  const deletePasswordHash = await hashPassword(deletePw);
   try {
-    await setDoc(doc(db, "vaults", id), { name, passwordHash, createdAt: Date.now() });
+    await setDoc(doc(db, "vaults", id), { name, passwordHash, deletePasswordHash, createdAt: Date.now() });
   } catch (err) {
     errEl.textContent = "Não foi possível criar o cofre. Confira a configuração do Firebase.";
     console.error(err);
@@ -179,6 +196,7 @@ function finalizeBoard(id, vaultName) {
   boardRef = doc(db, "boards", id);
   nodesCol = collection(db, "boards", id, "nodes");
   edgesCol = collection(db, "boards", id, "edges");
+  currentVaultName = vaultName;
 
   const u = new URL(location.href);
   u.searchParams.set("board", id);
@@ -217,6 +235,7 @@ function submitName() {
 function enterBoard() {
   authOverlay.classList.add("hidden-overlay");
   playerNameLabel.textContent = playerName;
+  fitToWorld();
   getDoc(boardRef).then((snap) => {
     if (snap.exists() && snap.data().title) boardTitleInput.value = snap.data().title;
   });
@@ -232,6 +251,7 @@ playerMenuBtn.addEventListener("click", (e) => {
   playerMenu.classList.toggle("open");
 });
 document.addEventListener("click", () => playerMenu.classList.remove("open"));
+document.addEventListener("click", () => searchPanel.classList.remove("open"));
 
 document.getElementById("rename-btn").addEventListener("click", (e) => {
   e.stopPropagation();
@@ -253,6 +273,82 @@ document.getElementById("switch-vault-btn").addEventListener("click", (e) => {
   showLobby();
 });
 
+document.getElementById("delete-vault-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  playerMenu.classList.remove("open");
+  if (boardId) promptDeleteVault(boardId, currentVaultName);
+});
+
+let deleteTarget = null;
+
+async function promptDeleteVault(id, name) {
+  let data;
+  try {
+    const snap = await getDoc(doc(db, "vaults", id));
+    if (!snap.exists()) {
+      alert("Este cofre não tem senha de exclusão cadastrada (provavelmente foi criado antes desse recurso) e não pode ser excluído por aqui.");
+      return;
+    }
+    data = snap.data();
+  } catch (err) {
+    console.error(err);
+    alert("Não foi possível verificar este cofre agora.");
+    return;
+  }
+  if (!data.deletePasswordHash) {
+    alert("Este cofre não tem senha de exclusão cadastrada e não pode ser excluído por aqui.");
+    return;
+  }
+  deleteTarget = { id, data };
+  document.getElementById("delete-vault-name").textContent = `Excluir "${name || data.name || "cofre"}"`;
+  document.getElementById("delete-password").value = "";
+  document.getElementById("delete-error").textContent = "";
+  authOverlay.classList.remove("hidden-overlay");
+  showPanel("delete");
+  document.getElementById("delete-password").focus();
+}
+
+document.getElementById("delete-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("delete-submit").click();
+});
+document.getElementById("delete-back").onclick = () => {
+  if (boardId) { authOverlay.classList.add("hidden-overlay"); } else { showLobby(); }
+};
+document.getElementById("delete-submit").onclick = async () => {
+  const pw = document.getElementById("delete-password").value;
+  const errEl = document.getElementById("delete-error");
+  if (!pw) { errEl.textContent = "Digite a senha de exclusão."; return; }
+  const hash = await hashPassword(pw);
+  if (hash !== deleteTarget.data.deletePasswordHash) {
+    errEl.textContent = "Senha de exclusão incorreta.";
+    return;
+  }
+  errEl.textContent = "";
+  const idToDelete = deleteTarget.id;
+  const wasCurrentBoard = boardId === idToDelete;
+  try {
+    await deleteVaultCascade(idToDelete);
+  } catch (err) {
+    console.error(err);
+    errEl.textContent = "Erro ao excluir. Confira as regras do Firestore.";
+    return;
+  }
+  localStorage.removeItem("vault_unlocked_" + idToDelete);
+  if (wasCurrentBoard) resetBoardState();
+  showLobby();
+};
+
+async function deleteVaultCascade(id) {
+  const batch = writeBatch(db);
+  const nodesSnap = await getDocs(collection(db, "boards", id, "nodes"));
+  nodesSnap.forEach((d) => batch.delete(d.ref));
+  const edgesSnap = await getDocs(collection(db, "boards", id, "edges"));
+  edgesSnap.forEach((d) => batch.delete(d.ref));
+  batch.delete(doc(db, "boards", id));
+  batch.delete(doc(db, "vaults", id));
+  await batch.commit();
+}
+
 function resetBoardState() {
   if (unsubNodes) { unsubNodes(); unsubNodes = null; }
   if (unsubEdges) { unsubEdges(); unsubEdges = null; }
@@ -266,6 +362,7 @@ function resetBoardState() {
   boardRef = null;
   nodesCol = null;
   edgesCol = null;
+  currentVaultName = null;
   boardTitleInput.value = "";
   boardTitleInput.placeholder = "Quadro de Investigação";
 }
@@ -287,12 +384,34 @@ boardTitleInput.addEventListener("input", () => {
 });
 
 // ------------------------------------------------------------------
+// Tamanho do quadro (área limitada, em pixels do "mundo")
+// Pode ajustar aqui se sua mesa precisar de mais ou menos espaço.
+// ------------------------------------------------------------------
+const WORLD_W = 3600;
+const WORLD_H = 2400;
+worldBoundsEl.style.width = WORLD_W + "px";
+worldBoundsEl.style.height = WORLD_H + "px";
+
+function clampNodeX(x, w) { return Math.min(WORLD_W - w, Math.max(0, x)); }
+function clampNodeY(y, h) { return Math.min(WORLD_H - h, Math.max(0, y)); }
+
+// ------------------------------------------------------------------
 // Viewport state (pan & zoom) — mouse, trackpad e toque (com pinça)
 // ------------------------------------------------------------------
 const view = { x: 400, y: 250, scale: 1 };
 const MIN_SCALE = 0.15, MAX_SCALE = 2.5;
 
+function clampView() {
+  const r = viewport.getBoundingClientRect();
+  const margin = 140; // px de folga: impede arrastar o quadro inteiro pra fora da tela
+  const worldW = WORLD_W * view.scale;
+  const worldH = WORLD_H * view.scale;
+  view.x = Math.min(r.width - margin, Math.max(margin - worldW, view.x));
+  view.y = Math.min(r.height - margin, Math.max(margin - worldH, view.y));
+}
+
 function applyTransform() {
+  clampView();
   content.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   zoomLevelLabel.textContent = Math.round(view.scale * 100) + "%";
 }
@@ -309,6 +428,15 @@ function zoomAt(clientX, clientY, factor) {
   const r = viewport.getBoundingClientRect();
   view.x = clientX - r.left - before.x * view.scale;
   view.y = clientY - r.top - before.y * view.scale;
+  applyTransform();
+}
+function fitToWorld() {
+  const r = viewport.getBoundingClientRect();
+  const scaleX = r.width / (WORLD_W + 160);
+  const scaleY = r.height / (WORLD_H + 160);
+  view.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
+  view.x = (r.width - WORLD_W * view.scale) / 2;
+  view.y = (r.height - WORLD_H * view.scale) / 2;
   applyTransform();
 }
 applyTransform();
@@ -334,9 +462,7 @@ document.getElementById("zoom-out").onclick = () => {
   const r = viewport.getBoundingClientRect();
   zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
 };
-document.getElementById("zoom-reset").onclick = () => {
-  view.x = 400; view.y = 250; view.scale = 1; applyTransform();
-};
+document.getElementById("zoom-reset").onclick = fitToWorld;
 
 // --- Pan (mouse/toque) + pinça (toque com 2 dedos) ---
 function isBackgroundTarget(t) {
@@ -434,13 +560,17 @@ let unsubNodes = null;
 
 function createTextNode(x, y) {
   addDoc(nodesCol, {
-    type: "text", x, y, width: 220, height: 120, color: 0,
+    type: "text",
+    x: clampNodeX(x, 220), y: clampNodeY(y, 120),
+    width: 220, height: 120, color: 0,
     text: "", createdBy: playerName, updatedAt: Date.now()
   });
 }
 async function createImageNode(x, y, dataUrl) {
   await addDoc(nodesCol, {
-    type: "image", x, y, width: 220, height: 220, color: 0,
+    type: "image",
+    x: clampNodeX(x, 220), y: clampNodeY(y, 220),
+    width: 220, height: 220, color: 0,
     imageUrl: dataUrl, createdBy: playerName, updatedAt: Date.now()
   });
 }
@@ -561,8 +691,10 @@ function startDragNode(e, id, el) {
 
   function move(ev) {
     const cur = screenToCanvas(ev.clientX, ev.clientY);
-    const nx = origin.x + (cur.x - startCanvas.x);
-    const ny = origin.y + (cur.y - startCanvas.y);
+    const w = nodeData.get(id).width || 220;
+    const h = nodeData.get(id).height || 140;
+    const nx = clampNodeX(origin.x + (cur.x - startCanvas.x), w);
+    const ny = clampNodeY(origin.y + (cur.y - startCanvas.y), h);
     el.style.left = nx + "px";
     el.style.top = ny + "px";
     nodeData.set(id, { ...nodeData.get(id), x: nx, y: ny });
@@ -593,8 +725,11 @@ function startResizeNode(e, id, el) {
   function move(ev) {
     const dx = (ev.clientX - start.x) / view.scale;
     const dy = (ev.clientY - start.y) / view.scale;
-    const nw = Math.max(140, origin.w + dx);
-    const nh = Math.max(80, origin.h + dy);
+    const d = nodeData.get(id);
+    const maxW = WORLD_W - d.x;
+    const maxH = WORLD_H - d.y;
+    const nw = Math.min(maxW, Math.max(140, origin.w + dx));
+    const nh = Math.min(maxH, Math.max(80, origin.h + dy));
     el.style.width = nw + "px";
     el.style.height = nh + "px";
     nodeData.set(id, { ...nodeData.get(id), width: nw, height: nh });
@@ -639,6 +774,73 @@ function nodeCenter(id) {
   const d = nodeData.get(id);
   if (!d) return { x: 0, y: 0 };
   return { x: d.x + (d.width || 220) / 2, y: d.y + (d.height || 140) / 2 };
+}
+
+// ------------------------------------------------------------------
+// Buscar / localizar cards
+// ------------------------------------------------------------------
+const searchWrap = document.getElementById("search-wrap");
+const searchToggle = document.getElementById("search-toggle");
+const searchPanel = document.getElementById("search-panel");
+const searchInput = document.getElementById("search-input");
+const searchResults = document.getElementById("search-results");
+
+searchToggle.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const opening = !searchPanel.classList.contains("open");
+  document.querySelectorAll(".dropdown-menu.open").forEach((m) => m.classList.remove("open"));
+  if (opening) {
+    searchPanel.classList.add("open");
+    searchInput.value = "";
+    renderSearchResults("");
+    setTimeout(() => searchInput.focus(), 0);
+  }
+});
+searchPanel.addEventListener("click", (e) => e.stopPropagation());
+searchInput.addEventListener("input", () => renderSearchResults(searchInput.value.trim()));
+
+function renderSearchResults(query) {
+  const q = query.toLowerCase();
+  const matches = [];
+  nodeData.forEach((data, id) => {
+    if (data.type !== "text") return;
+    const text = (data.text || "").trim();
+    if (!q || text.toLowerCase().includes(q)) {
+      matches.push({ id, text: text || "(card vazio)", color: data.color ?? 0 });
+    }
+  });
+
+  if (matches.length === 0) {
+    searchResults.innerHTML = `<div class="search-empty">${query ? "Nenhum card encontrado." : "Nenhum card de texto no quadro ainda."}</div>`;
+    return;
+  }
+  searchResults.innerHTML = "";
+  matches.slice(0, 40).forEach((m) => {
+    const row = document.createElement("button");
+    row.className = "search-result-row";
+    const snippet = m.text.length > 70 ? m.text.slice(0, 70) + "…" : m.text;
+    row.innerHTML = `<span class="search-result-dot" style="background:var(--c${m.color})"></span><span class="search-result-snippet">${escapeHtml(snippet)}</span>`;
+    row.onclick = () => locateNode(m.id);
+    searchResults.appendChild(row);
+  });
+}
+
+function locateNode(id) {
+  const d = nodeData.get(id);
+  if (!d) return;
+  const center = nodeCenter(id);
+  const r = viewport.getBoundingClientRect();
+  view.scale = Math.max(view.scale, 0.7);
+  view.x = r.width / 2 - center.x * view.scale;
+  view.y = r.height / 2 - center.y * view.scale;
+  applyTransform();
+
+  searchPanel.classList.remove("open");
+  const el = nodeEls.get(id);
+  if (el) {
+    el.classList.add("highlight-pulse");
+    setTimeout(() => el.classList.remove("highlight-pulse"), 2800);
+  }
 }
 
 // ------------------------------------------------------------------
