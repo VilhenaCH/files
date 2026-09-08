@@ -29,6 +29,7 @@
         <div id="player-menu" class="dropdown-menu">
           <button id="rename-btn">Mudar nome</button>
           <button id="switch-vault-btn">Trocar de cofre</button>
+          <button id="delete-vault-btn" class="danger-item">Excluir cofre</button>
         </div>
       </div>
       <button id="share-btn" title="Copiar link do quadro">Copiar link</button>
@@ -78,9 +79,10 @@
 
     <div id="panel-create" class="auth-panel hidden">
       <h1>Criar novo cofre</h1>
-      <p>Defina um nome e uma senha. Quem quiser entrar vai precisar dela.</p>
+      <p>Defina um nome e duas senhas: uma pra entrar, outra só pra poder excluir o cofre depois.</p>
       <input id="create-name" maxlength="40" placeholder="Nome do cofre (ex: Caso do Farol)" spellcheck="false" />
-      <input id="create-password" type="password" maxlength="60" placeholder="Senha do cofre" />
+      <input id="create-password" type="password" maxlength="60" placeholder="Senha de entrada" />
+      <input id="create-delete-password" type="password" maxlength="60" placeholder="Senha de exclusão" />
       <div class="auth-error" id="create-error"></div>
       <button id="create-submit" class="auth-btn-primary">Criar cofre</button>
       <button id="create-back" class="auth-btn-link">Voltar</button>
@@ -100,6 +102,15 @@
       <p>Como você quer aparecer para o resto da mesa?</p>
       <input id="name-input" maxlength="24" placeholder="Seu nome" spellcheck="false" />
       <button id="name-submit" class="auth-btn-primary">Entrar</button>
+    </div>
+
+    <div id="panel-delete" class="auth-panel hidden">
+      <h1 id="delete-vault-name">Excluir cofre</h1>
+      <p>Essa ação apaga o cofre e todos os cards e conexões dele para sempre. Digite a senha de exclusão para confirmar.</p>
+      <input id="delete-password" type="password" maxlength="60" placeholder="Senha de exclusão" />
+      <div class="auth-error" id="delete-error"></div>
+      <button id="delete-submit" class="auth-btn-danger">Excluir definitivamente</button>
+      <button id="delete-back" class="auth-btn-link">Cancelar</button>
     </div>
 
   </div>
