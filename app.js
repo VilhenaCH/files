@@ -358,6 +358,7 @@ function resetBoardState() {
   nodeData.clear();
   edgeEls.clear();
   edgeData.clear();
+  selectedNodeId = null;
   boardId = null;
   boardRef = null;
   nodesCol = null;
@@ -479,6 +480,7 @@ viewport.addEventListener("pointerdown", (e) => {
   if (!isBackgroundTarget(e.target)) return;
   if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
 
+  deselectAll();
   activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   viewport.setPointerCapture(e.pointerId);
   hint.classList.add("hide");
@@ -557,6 +559,18 @@ const nodeEls = new Map();
 const nodeData = new Map();
 const suppressRemote = new Set();
 let unsubNodes = null;
+let selectedNodeId = null;
+
+function selectNode(id) {
+  if (selectedNodeId === id) return;
+  deselectAll();
+  selectedNodeId = id;
+  nodeEls.get(id)?.classList.add("selected");
+}
+function deselectAll() {
+  if (selectedNodeId) nodeEls.get(selectedNodeId)?.classList.remove("selected");
+  selectedNodeId = null;
+}
 
 function createTextNode(x, y) {
   addDoc(nodesCol, {
@@ -608,24 +622,34 @@ function buildNodeEl(id) {
   const bar = el.querySelector(".node-bar");
   const colorToggle = el.querySelector(".node-color-toggle");
   const colorMenu = el.querySelector(".color-menu");
+  const imageMenuToggle = el.querySelector(".node-image-menu");
+  const imageMenu = el.querySelector(".image-menu");
   const delBtn = el.querySelector(".node-delete");
+  const toolbar = el.querySelector(".text-toolbar");
   const textEl = el.querySelector(".node-text");
-  const connectHandle = el.querySelector(".connect-handle");
+  const connectHandles = el.querySelectorAll(".connect-handle");
   const resizeHandle = el.querySelector(".resize-handle");
 
-  textEl.dataset.placeholder = "Escreva algo…";
-
   bar.addEventListener("pointerdown", (e) => startDragNode(e, id, el));
+
+  // clicar no corpo do card (fora de botões/alças) seleciona ele,
+  // revelando as alças de conexão dos 4 lados
+  el.addEventListener("click", (e) => {
+    if (e.target.closest(".node-color-toggle, .node-delete, .node-image-menu, .connect-handle, .resize-handle, .color-menu, .image-menu")) return;
+    selectNode(id);
+  });
 
   // impede que o pointerdown desses controles borbulhe até a barra
   // (senão o navegador entende como "começou a arrastar o card")
   colorToggle.addEventListener("pointerdown", (e) => e.stopPropagation());
   delBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
   colorMenu.addEventListener("pointerdown", (e) => e.stopPropagation());
+  imageMenuToggle.addEventListener("pointerdown", (e) => e.stopPropagation());
+  imageMenu.addEventListener("pointerdown", (e) => e.stopPropagation());
 
   colorToggle.addEventListener("click", (e) => {
     e.stopPropagation();
-    document.querySelectorAll(".color-menu.open").forEach((m) => { if (m !== colorMenu) m.classList.remove("open"); });
+    document.querySelectorAll(".color-menu.open, .image-menu.open").forEach((m) => m.classList.remove("open"));
     colorMenu.classList.toggle("open");
   });
   colorMenu.querySelectorAll("button").forEach((btn) => {
@@ -637,11 +661,42 @@ function buildNodeEl(id) {
       updateDoc(doc(nodesCol, id), { color: c });
     });
   });
-  document.addEventListener("click", () => colorMenu.classList.remove("open"));
+
+  // menu "⋯" da imagem: exibir / salvar / excluir imagem
+  imageMenuToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.querySelectorAll(".color-menu.open, .image-menu.open").forEach((m) => m.classList.remove("open"));
+    imageMenu.classList.toggle("open");
+  });
+  imageMenu.querySelector('[data-action="view"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    imageMenu.classList.remove("open");
+    const d = nodeData.get(id);
+    if (d?.imageUrl) openLightbox(d.imageUrl);
+  });
+  imageMenu.querySelector('[data-action="save"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    imageMenu.classList.remove("open");
+    const d = nodeData.get(id);
+    if (d?.imageUrl) downloadImage(d.imageUrl, id);
+  });
+  imageMenu.querySelector('[data-action="delete"]').addEventListener("click", (e) => {
+    e.stopPropagation();
+    imageMenu.classList.remove("open");
+    if (confirm("Remover apenas a imagem deste card? O card e a anotação continuam.")) {
+      updateDoc(doc(nodesCol, id), { type: "text", imageUrl: null });
+    }
+  });
+
+  document.addEventListener("click", () => {
+    colorMenu.classList.remove("open");
+    imageMenu.classList.remove("open");
+  });
 
   delBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (confirm("Excluir este card?")) {
+      if (selectedNodeId === id) selectedNodeId = null;
       deleteDoc(doc(nodesCol, id));
       edgeData.forEach((ed, eid) => {
         if (ed.fromNode === id || ed.toNode === id) deleteDoc(doc(edgesCol, eid));
@@ -649,16 +704,30 @@ function buildNodeEl(id) {
     }
   });
 
+  // formatação de texto (negrito/itálico/sublinhado/tachado/lista)
+  toolbar.addEventListener("pointerdown", (e) => e.stopPropagation());
+  toolbar.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("pointerdown", (e) => e.preventDefault()); // mantém o foco no texto
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.execCommand(btn.dataset.cmd, false, null);
+      textEl.focus();
+      updateDoc(doc(nodesCol, id), { text: textEl.innerHTML });
+    });
+  });
+
   let textTimer;
   textEl.addEventListener("input", () => {
     clearTimeout(textTimer);
-    const val = textEl.innerText;
+    const val = textEl.innerHTML;
     textTimer = setTimeout(() => updateDoc(doc(nodesCol, id), { text: val }), 350);
   });
   textEl.addEventListener("pointerdown", (e) => e.stopPropagation());
+  textEl.addEventListener("focus", () => el.classList.add("editing"));
+  textEl.addEventListener("blur", () => setTimeout(() => el.classList.remove("editing"), 150));
 
   resizeHandle.addEventListener("pointerdown", (e) => startResizeNode(e, id, el));
-  connectHandle.addEventListener("pointerdown", (e) => startConnect(e, id, el));
+  connectHandles.forEach((h) => h.addEventListener("pointerdown", (e) => startConnect(e, id, el)));
 
   return el;
 }
@@ -672,10 +741,14 @@ function paintNode(el, data) {
   el.classList.toggle("is-image", data.type === "image");
   const textEl = el.querySelector(".node-text");
   const imgEl = el.querySelector(".node-image");
+  textEl.dataset.placeholder = data.type === "image" ? "Escrever uma anotação…" : "Escreva algo…";
   if (data.type === "image") {
-    if (imgEl.src !== data.imageUrl) imgEl.src = data.imageUrl;
-  } else if (document.activeElement !== textEl && textEl.innerText !== (data.text || "")) {
-    textEl.innerText = data.text || "";
+    if (imgEl.src !== data.imageUrl) imgEl.src = data.imageUrl || "";
+  } else if (imgEl.hasAttribute("src")) {
+    imgEl.removeAttribute("src");
+  }
+  if (document.activeElement !== textEl && textEl.innerHTML !== (data.text || "")) {
+    textEl.innerHTML = data.text || "";
   }
 }
 
@@ -926,6 +999,28 @@ function onEdgeClick(id) {
   } else {
     deleteDoc(doc(edgesCol, id));
   }
+}
+
+// ------------------------------------------------------------------
+// Lightbox: ver imagem em tela cheia / salvar no dispositivo
+// ------------------------------------------------------------------
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = document.getElementById("lightbox-img");
+
+function openLightbox(url) {
+  lightboxImg.src = url;
+  lightbox.classList.remove("hidden");
+}
+document.getElementById("lightbox-close").onclick = () => lightbox.classList.add("hidden");
+lightbox.addEventListener("click", (e) => { if (e.target === lightbox) lightbox.classList.add("hidden"); });
+
+function downloadImage(dataUrl, id) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `card-${id}.jpg`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 // ------------------------------------------------------------------
