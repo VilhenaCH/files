@@ -366,8 +366,35 @@ html, body {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
+
+.text-toolbar {
+  display: none;
+  gap: 3px;
+  padding-bottom: 5px;
+  flex-wrap: wrap;
+  order: 0;
+}
+.node.editing .text-toolbar { display: flex; }
+.text-toolbar button {
+  width: 22px; height: 20px;
+  font-size: 11px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+.text-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+
 .node-text {
+  order: 1;
   outline: none;
   font-size: 13.5px;
   line-height: 1.5;
@@ -383,32 +410,83 @@ html, body {
 }
 .node-image {
   display: none;
+  order: -1;
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: 4px;
   pointer-events: none;
 }
-.node.is-image .node-text { display: none; }
-.node.is-image .node-image { display: block; }
-.node.is-image .node-body { padding: 0 8px 8px; }
 
+/* Card de imagem: a imagem ocupa o espaço principal, a legenda (mesmo
+   campo de texto) fica numa faixa fixa embaixo, com a barra de
+   formatação aparecendo entre as duas quando a legenda está em edição */
+.node.is-image .node-body { padding: 0 8px 8px; }
+.node.is-image .node-image { display: block; flex: 1; min-height: 0; order: -1; }
+.node.is-image .text-toolbar { order: 0; padding-top: 5px; }
+.node.is-image .node-text {
+  order: 1;
+  flex: 0 0 auto;
+  max-height: 64px;
+  overflow-y: auto;
+  font-size: 12px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  margin-top: 5px;
+}
+.node.is-image .node-text:empty::before { content: "Escrever uma anotação…"; }
+
+/* Menu "⋯" de opções da imagem — só existe/aparece em cards de imagem */
+.node-image-menu { display: none; }
+.node.is-image .node-image-menu { display: flex; }
+.image-menu {
+  display: none;
+  position: absolute;
+  top: 22px; right: 4px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  z-index: 40;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+}
+.image-menu.open { display: flex; }
+.image-menu button {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.image-menu button:hover { background: var(--bg-panel); }
+
+/* Alças de conexão nos 4 lados — ficam ocultas até o card ser
+   selecionado (clicado), tanto em mouse quanto em toque */
 .connect-handle {
   position: absolute;
-  right: -8px;
-  top: 50%;
-  transform: translateY(-50%);
   width: 15px; height: 15px;
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--bg-canvas);
   cursor: crosshair;
   opacity: 0;
+  pointer-events: none;
   touch-action: none;
   transition: opacity .12s ease, transform .12s ease;
 }
-.node:hover .connect-handle { opacity: 1; }
-.connect-handle:hover { transform: translateY(-50%) scale(1.25); }
+.node.selected .connect-handle { opacity: 1; pointer-events: auto; }
+.connect-handle.top    { top: -8px; left: 50%; transform: translateX(-50%); }
+.connect-handle.bottom { bottom: -8px; left: 50%; transform: translateX(-50%); }
+.connect-handle.left   { left: -8px; top: 50%; transform: translateY(-50%); }
+.connect-handle.right  { right: -8px; top: 50%; transform: translateY(-50%); }
+.connect-handle.top:hover, .connect-handle.bottom:hover { transform: translateX(-50%) scale(1.3); }
+.connect-handle.left:hover, .connect-handle.right:hover { transform: translateY(-50%) scale(1.3); }
 
 .resize-handle {
   position: absolute;
@@ -420,20 +498,20 @@ html, body {
 }
 .node:hover .resize-handle { opacity: .6; }
 
-/* Telas de toque não têm hover — mostra as alças sempre, e maiores, para dar
-   pra tocar com o dedo sem precisar de precisão de mouse */
+/* Telas de toque não têm hover — mostra os controles de sempre (menos
+   as alças de conexão, que continuam dependendo da seleção por toque) */
 @media (hover: none) {
   .node-bar { opacity: 1; height: 30px; }
-  .connect-handle {
-    opacity: 1;
-    width: 26px; height: 26px;
-    right: -13px;
-  }
+  .connect-handle { width: 26px; height: 26px; }
+  .connect-handle.top { top: -13px; }
+  .connect-handle.bottom { bottom: -13px; }
+  .connect-handle.left { left: -13px; }
+  .connect-handle.right { right: -13px; }
   .resize-handle {
     opacity: .8;
     width: 26px; height: 26px;
   }
-  .node-color-toggle, .node-delete {
+  .node-color-toggle, .node-delete, .node-image-menu {
     width: 26px; height: 26px;
     font-size: 16px;
   }
@@ -669,6 +747,38 @@ html, body {
   #fab-add { bottom: 12px; left: 12px; width: 50px; height: 50px; font-size: 24px; }
   .auth-panel { padding: 22px 20px; }
 }
+
+/* ---------- Lightbox de imagem ---------- */
+#lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,10,11,.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 40px;
+}
+#lightbox.hidden { display: none; }
+#lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.6);
+}
+#lightbox-close {
+  position: fixed;
+  top: 18px; right: 22px;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+}
+#lightbox-close:hover { background: var(--bg-panel-2); }
 
 /* scrollbar discreto */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
