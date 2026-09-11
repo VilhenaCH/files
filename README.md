@@ -51,6 +51,19 @@ organizado em **cofres** protegidos por senha.
   busca por texto entre os cards do cofre atual. Clicar num resultado
   leva a câmera direto até o card e pisca uma borda nele por alguns
   segundos, pra facilitar achar anotações antigas.
+- **Conectar de qualquer lado**: cada card tem uma alcinha de conexão
+  nos 4 lados (topo, direita, baixo, esquerda). Elas ficam ocultas até
+  você clicar no card pra selecioná-lo — clicar no quadro vazio
+  desseleciona. Isso vale tanto pra mouse quanto pra toque.
+- **Anotação e formatação de texto**: tanto cards de texto quanto a
+  legenda de um card de imagem aceitam negrito, itálico, sublinhado,
+  tachado e lista — uma barrinha de formatação aparece assim que você
+  clica pra escrever.
+- **Menu da imagem**: cards de imagem têm um botão "⋯" com três opções:
+  **Exibir imagem** (abre em tela cheia), **Salvar no dispositivo**
+  (baixa o arquivo) e **Excluir imagem** (remove só a imagem, mantendo
+  o card e a anotação — o card vira um card de texto normal, sem
+  perder as conexões que já tinha).
 
 > **Sobre a segurança da senha**: a senha do cofre é comparada dentro
 > do navegador (hash SHA-256), sem servidor próprio por trás. Isso é
@@ -135,10 +148,12 @@ service cloud.firestore {
 | Criar card | Duplo clique no quadro vazio, ou botão **+** |
 | Mover card | Arrastar pela barra de cima do card |
 | Redimensionar | Arrastar o cantinho inferior direito |
-| Editar texto | Clicar dentro do card e digitar |
+| Editar texto | Clicar dentro do card e digitar (barra de formatação aparece) |
 | Colar imagem | `Ctrl+V` (ou `Cmd+V`) com uma imagem copiada |
 | Trocar cor | Bolinha no canto do card |
-| Conectar dois cards | Arrastar a partir do ponto na lateral direita até outro card |
+| Opções da imagem | Botão "⋯" no card (exibir / salvar / excluir imagem) |
+| Selecionar card (mostrar alças de conexão) | Clicar no card |
+| Conectar dois cards | Clicar num card e arrastar de qualquer lado até outro |
 | Editar/remover conexão | Clicar na seta |
 | Pan | Arrastar o fundo vazio |
 | Zoom | `Ctrl` + scroll, pinça no toque, ou os botões `+`/`−` |
