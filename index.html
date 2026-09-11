@@ -128,16 +128,38 @@
           <button data-color="5"></button>
           <button data-color="6"></button>
         </div>
-        <button class="node-delete" title="Excluir">×</button>
+        <button class="node-image-menu" title="Opções da imagem">⋯</button>
+        <div class="image-menu">
+          <button data-action="view">Exibir imagem</button>
+          <button data-action="save">Salvar no dispositivo</button>
+          <button data-action="delete" class="danger-item">Excluir imagem</button>
+        </div>
+        <button class="node-delete" title="Excluir card">×</button>
       </div>
       <div class="node-body">
+        <div class="text-toolbar">
+          <button data-cmd="bold" title="Negrito"><b>B</b></button>
+          <button data-cmd="italic" title="Itálico"><i>I</i></button>
+          <button data-cmd="underline" title="Sublinhado"><u>U</u></button>
+          <button data-cmd="strikeThrough" title="Tachado"><s>S</s></button>
+          <button data-cmd="insertUnorderedList" title="Lista">≡</button>
+        </div>
         <div class="node-text" contenteditable="true" spellcheck="false"></div>
         <img class="node-image" draggable="false" />
       </div>
-      <div class="connect-handle" title="Arraste para conectar"></div>
+      <div class="connect-handle top" title="Arraste para conectar"></div>
+      <div class="connect-handle right" title="Arraste para conectar"></div>
+      <div class="connect-handle bottom" title="Arraste para conectar"></div>
+      <div class="connect-handle left" title="Arraste para conectar"></div>
       <div class="resize-handle" title="Redimensionar"></div>
     </div>
   </template>
+
+  <!-- Lightbox de imagem em tela cheia -->
+  <div id="lightbox" class="hidden">
+    <button id="lightbox-close" title="Fechar">×</button>
+    <img id="lightbox-img" />
+  </div>
 
   <script type="module" src="firebase-config.js"></script>
   <script type="module" src="app.js"></script>
